@@ -69,14 +69,14 @@ COPY turbo.json turbo.json
 
 RUN turbo run build
 
-# Remove devDependencies after build to reduce image size.
-# CI=true skips the interactive confirmation pnpm v10 requires before
-# removing node_modules in non-TTY environments
-# (ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY).
-# Note: scripts MUST run during prune so pnpm correctly rebuilds the
-# node_modules tree (incl. workspace bin shims). The root `prepare`
-# script is `husky || true`, so it's safe even after husky is removed.
-RUN CI=true pnpm prune --prod
+# NOTE: We intentionally do NOT run `pnpm prune --prod` here.
+# In this pnpm v10 + Turborepo workspace it produces a broken
+# node_modules tree where workspace `.bin/` shims (incl. .bin/strapi)
+# end up missing in the runner stage, causing the container to crash
+# on start with `Cannot find module '/app/apps/strapi/node_modules/.bin/strapi'`.
+# devDependencies stay in the final image — slightly larger but functional.
+# TODO: switch to `pnpm --filter @repo/strapi deploy --prod /deploy` for a
+# proper slim production install.
 
 # ---
 FROM node:22-alpine AS runner

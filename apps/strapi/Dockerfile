@@ -70,9 +70,11 @@ COPY turbo.json turbo.json
 RUN turbo run build
 
 # Remove devDependencies after build to reduce image size.
-# --ignore-scripts prevents the root `prepare` script (husky) from running
-# after husky itself was just removed as a devDependency.
-RUN pnpm prune --prod --ignore-scripts
+# - CI=true skips the interactive confirmation pnpm v10 requires before
+#   removing node_modules in non-TTY environments (ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY).
+# - --ignore-scripts prevents the root `prepare` script (husky) from running
+#   after husky itself was just removed as a devDependency.
+RUN CI=true pnpm prune --prod --ignore-scripts
 
 # ---
 FROM node:22-alpine AS runner

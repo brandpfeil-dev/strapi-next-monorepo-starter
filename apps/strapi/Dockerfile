@@ -70,11 +70,13 @@ COPY turbo.json turbo.json
 RUN turbo run build
 
 # Remove devDependencies after build to reduce image size.
-# - CI=true skips the interactive confirmation pnpm v10 requires before
-#   removing node_modules in non-TTY environments (ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY).
-# - --ignore-scripts prevents the root `prepare` script (husky) from running
-#   after husky itself was just removed as a devDependency.
-RUN CI=true pnpm prune --prod --ignore-scripts
+# CI=true skips the interactive confirmation pnpm v10 requires before
+# removing node_modules in non-TTY environments
+# (ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY).
+# Note: scripts MUST run during prune so pnpm correctly rebuilds the
+# node_modules tree (incl. workspace bin shims). The root `prepare`
+# script is `husky || true`, so it's safe even after husky is removed.
+RUN CI=true pnpm prune --prod
 
 # ---
 FROM node:22-alpine AS runner
@@ -97,7 +99,4 @@ ENV PATH=/app/apps/${APP}/node_modules/.bin:$PATH
 USER strapi
 WORKDIR /app/apps/${APP}
 EXPOSE ${PORT:-1337}
-# Invoke the real strapi entrypoint directly via node instead of the
-# .bin/ shim. pnpm v10's `prune --prod --ignore-scripts` does not re-link
-# workspace bin shims, so .bin/strapi may not exist at runtime.
-CMD ["node", "node_modules/@strapi/strapi/bin/strapi.js", "start"]
+CMD ["./node_modules/.bin/strapi", "start"]

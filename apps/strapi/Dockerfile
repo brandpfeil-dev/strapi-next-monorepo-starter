@@ -97,4 +97,7 @@ ENV PATH=/app/apps/${APP}/node_modules/.bin:$PATH
 USER strapi
 WORKDIR /app/apps/${APP}
 EXPOSE ${PORT:-1337}
-CMD ["./node_modules/.bin/strapi", "start"]
+# Invoke the real strapi entrypoint directly via node instead of the
+# .bin/ shim. pnpm v10's `prune --prod --ignore-scripts` does not re-link
+# workspace bin shims, so .bin/strapi may not exist at runtime.
+CMD ["node", "node_modules/@strapi/strapi/bin/strapi.js", "start"]

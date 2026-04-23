@@ -57,9 +57,13 @@ COPY --from=prepare /app/out/pnpm-workspace.yaml ./pnpm-workspace.yaml
 ENV NODE_ENV=development
 
 # see https://github.com/moby/buildkit/blob/master/frontend/dockerfile/docs/reference.md#run---mounttypecache
+# NOTE: --ignore-scripts is intentionally NOT set here. It empirically
+# breaks creation of workspace bin shims (apps/strapi/node_modules/.bin/strapi)
+# in this pnpm v10 setup, and native deps (sharp, esbuild) need their
+# install scripts anyway.
 RUN \
     --mount=type=cache,id=pnpm,target=/pnpm/store \
-    pnpm install --frozen-lockfile --prefer-offline --ignore-scripts
+    pnpm install --frozen-lockfile --prefer-offline
 
 ENV PATH=/app/apps/${APP}/node_modules/.bin:$PATH
 
@@ -69,14 +73,19 @@ COPY turbo.json turbo.json
 
 RUN turbo run build
 
+# Diagnostics: verify bin shims and strapi entrypoint actually exist
+# in the builder before we copy /app to the runner stage.
+RUN echo "=== apps/strapi/node_modules/.bin (filtered) ===" && \
+    ls -la apps/strapi/node_modules/.bin/ 2>/dev/null | grep -E "strapi|^total" || echo "MISSING .bin dir" && \
+    echo "=== @strapi/strapi/bin ===" && \
+    ls -laL apps/strapi/node_modules/@strapi/strapi/bin/ 2>/dev/null || echo "MISSING strapi.js"
+
 # NOTE: We intentionally do NOT run `pnpm prune --prod` here.
 # In this pnpm v10 + Turborepo workspace it produces a broken
-# node_modules tree where workspace `.bin/` shims (incl. .bin/strapi)
-# end up missing in the runner stage, causing the container to crash
-# on start with `Cannot find module '/app/apps/strapi/node_modules/.bin/strapi'`.
-# devDependencies stay in the final image — slightly larger but functional.
-# TODO: switch to `pnpm --filter @repo/strapi deploy --prod /deploy` for a
-# proper slim production install.
+# node_modules tree where workspace `.bin/` shims end up missing in the
+# runner stage. devDependencies stay in the final image — slightly
+# larger but functional. TODO: switch to `pnpm --filter @repo/strapi
+# deploy --prod /deploy` for a proper slim production install.
 
 # ---
 FROM node:22-alpine AS runner
@@ -94,9 +103,21 @@ RUN adduser --system --uid 1001 strapi
 WORKDIR /app
 COPY --from=builder --chown=strapi:strapi /app /app
 
+# Diagnostics in the runner image — output appears in deploy logs
+RUN echo "=== runner: apps/strapi/node_modules/.bin (strapi entries) ===" && \
+    (ls -la /app/apps/${APP}/node_modules/.bin/ 2>/dev/null | grep -E "strapi|^total" || echo "MISSING .bin/strapi"); \
+    echo "=== runner: @strapi/strapi/bin (resolved) ==="; \
+    (ls -laL /app/apps/${APP}/node_modules/@strapi/strapi/bin/ 2>/dev/null || echo "MISSING @strapi/strapi/bin/strapi.js"); \
+    echo "=== runner: ls /app/apps/${APP}/node_modules/@strapi/ ==="; \
+    (ls -la /app/apps/${APP}/node_modules/@strapi/ 2>/dev/null | head -30 || echo "MISSING @strapi dir")
+
 ENV PATH=/app/apps/${APP}/node_modules/.bin:$PATH
 
 USER strapi
 WORKDIR /app/apps/${APP}
 EXPOSE ${PORT:-1337}
-CMD ["./node_modules/.bin/strapi", "start"]
+# Invoke the real strapi entrypoint via node, going through the
+# @strapi/strapi symlink (which points into the pnpm virtual store).
+# This avoids any dependency on the `.bin/strapi` shim, whose creation
+# behavior in pnpm v10 + workspace + Docker has proven flaky.
+CMD ["node", "node_modules/@strapi/strapi/bin/strapi.js", "start"]

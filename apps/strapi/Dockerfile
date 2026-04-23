@@ -73,13 +73,6 @@ COPY turbo.json turbo.json
 
 RUN turbo run build
 
-# Diagnostics: verify bin shims and strapi entrypoint actually exist
-# in the builder before we copy /app to the runner stage.
-RUN echo "=== apps/strapi/node_modules/.bin (filtered) ===" && \
-    ls -la apps/strapi/node_modules/.bin/ 2>/dev/null | grep -E "strapi|^total" || echo "MISSING .bin dir" && \
-    echo "=== @strapi/strapi/bin ===" && \
-    ls -laL apps/strapi/node_modules/@strapi/strapi/bin/ 2>/dev/null || echo "MISSING strapi.js"
-
 # NOTE: We intentionally do NOT run `pnpm prune --prod` here.
 # In this pnpm v10 + Turborepo workspace it produces a broken
 # node_modules tree where workspace `.bin/` shims end up missing in the
@@ -102,14 +95,6 @@ RUN adduser --system --uid 1001 strapi
 
 WORKDIR /app
 COPY --from=builder --chown=strapi:strapi /app /app
-
-# Diagnostics in the runner image — output appears in deploy logs
-RUN echo "=== runner: apps/strapi/node_modules/.bin (strapi entries) ===" && \
-    (ls -la /app/apps/${APP}/node_modules/.bin/ 2>/dev/null | grep -E "strapi|^total" || echo "MISSING .bin/strapi"); \
-    echo "=== runner: @strapi/strapi/bin (resolved) ==="; \
-    (ls -laL /app/apps/${APP}/node_modules/@strapi/strapi/bin/ 2>/dev/null || echo "MISSING @strapi/strapi/bin/strapi.js"); \
-    echo "=== runner: ls /app/apps/${APP}/node_modules/@strapi/ ==="; \
-    (ls -la /app/apps/${APP}/node_modules/@strapi/ 2>/dev/null | head -30 || echo "MISSING @strapi dir")
 
 ENV PATH=/app/apps/${APP}/node_modules/.bin:$PATH
 

@@ -13,6 +13,19 @@ export default ({ env }) => {
   return {
     auth: {
       secret: env("ADMIN_JWT_SECRET"),
+      // Strapi 5 session config. The legacy `auth.options.expiresIn` is
+      // deprecated and will be removed in Strapi 6; configure session and
+      // refresh-token lifespans explicitly here. Values are in seconds.
+      sessions: {
+        maxRefreshTokenLifespan: env.int(
+          "ADMIN_SESSION_MAX_REFRESH_TOKEN_LIFESPAN",
+          60 * 60 * 24 * 30 // 30 days
+        ),
+        maxSessionLifespan: env.int(
+          "ADMIN_SESSION_MAX_SESSION_LIFESPAN",
+          60 * 60 * 24 // 1 day
+        ),
+      },
     },
     apiToken: {
       salt: env("API_TOKEN_SALT"),
@@ -21,6 +34,11 @@ export default ({ env }) => {
       token: {
         salt: env("TRANSFER_TOKEN_SALT"),
       },
+    },
+    // Used by Strapi 5 to encrypt sensitive admin data at rest.
+    // Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+    secrets: {
+      encryptionKey: env("ENCRYPTION_KEY"),
     },
     preview: {
       enabled: strapiPreviewConfig.enabled,

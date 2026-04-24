@@ -67,11 +67,17 @@ RUN \
 
 ENV PATH=/app/apps/${APP}/node_modules/.bin:$PATH
 
-# Build the project and its dependencies
+# Build the project and its dependencies.
 COPY --from=prepare /app/out/full/ .
 COPY turbo.json turbo.json
 
-RUN turbo run build
+# Cap Node heap so Vite (admin panel build) doesn't grow until the
+# kernel OOM-kills it (exit 137) on memory-constrained hosts.
+# Override with `--build-arg NODE_MAX_OLD_SPACE_SIZE=8192` if needed.
+ARG NODE_MAX_OLD_SPACE_SIZE=4096
+ENV NODE_OPTIONS=--max-old-space-size=${NODE_MAX_OLD_SPACE_SIZE}
+
+RUN turbo run build --concurrency=1
 
 # NOTE: We intentionally do NOT run `pnpm prune --prod` here.
 # In this pnpm v10 + Turborepo workspace it produces a broken

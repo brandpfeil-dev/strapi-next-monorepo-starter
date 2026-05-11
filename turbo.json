@@ -39,6 +39,9 @@
       "dependsOn": ["^build"],
       "outputs": [".next/**", "!.next/cache/**", "dist/**", "public/**"]
     },
+    "@repo/strapi-types#build": {
+      "outputs": []
+    },
     "build:static": {
       "dependsOn": ["^build"],
       "outputs": [
